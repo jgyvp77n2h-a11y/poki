@@ -23,9 +23,9 @@ concurrency:
 
 jobs:
   app:
-    # The Xcode 27 image: the iOS 27.1 SDK or later, which the iPhone Duo needs (build-ipa).
-    # Standard hosted runner; larger runners are unavailable under the current billing state.
-    runs-on: xcode-27
+    # iPhone 14 hand-test build: the standard macOS 26 runner is sufficient and picks up faster.
+    # The Duo-specific prealpha flow still uses the Xcode 27 runner and its 27.1 SDK floor.
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +50,7 @@ jobs:
           version: ${{ inputs.version }}
           build: ${{ inputs.build }}
           editions: ${{ inputs.editions || 'external' }}
+          minimumSDK: 26.0
       - name: Upload build logs
         if: failure()
         uses: actions/upload-artifact@v4
