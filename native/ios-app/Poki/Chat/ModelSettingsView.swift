@@ -447,7 +447,7 @@ struct AddAccount: View {
                         }
                     }
                 } footer: {
-                    Text("Text chat works with every account. Live voice needs an OpenAI API key or a custom endpoint with the Realtime API. Add as many custom endpoints as you would like.")
+                    Text("Text chat works with every account. Live voice needs an OpenAI API key or a custom endpoint with the Realtime API. Add as many custom endpoints as you like.")
                 }
             }
             .listStyle(.insetGrouped)
