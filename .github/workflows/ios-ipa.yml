@@ -17,6 +17,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   app:
     # The Xcode 27 image: the iOS 27.1 SDK or later, which the iPhone Duo needs (build-ipa).
