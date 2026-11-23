@@ -23,20 +23,46 @@ enum Harness {
     }
 
     /// The model service this chat is on: what the model needs to say what drives it, instead of
-    /// guessing. Read when a task starts, so a change in Settings shows on the next task.
+    /// guessing. Read when a task starts, so a change in Settings shows on the next task. With more
+    /// than one saved endpoint the name alone can contradict the address (a preset named DeepSeek
+    /// pointing at a local server), so the address and the model are given as the facts to trust.
     private static var backendLine: String {
         let provider = ModelKeys.selectedProvider
-        var name = provider.name
+        var label = provider.name
         var model = ModelKeys.selectedModel
         var address: String?
+        var isCustom = false
         if provider == .custom, let choice = CustomProviders.parse(model), let service = CustomProviders.provider(choice.provider) {
-            name = service.displayName
+            label = service.displayName
             model = choice.model
             address = service.primary?.url
+            isCustom = true
         }
-        var facts = ["provider: \(name)", "model: \(model)"]
-        if let address { facts.append("address: \(address)") }
-        return "This chat is driven by " + facts.joined(separator: " · ") + ". When you introduce yourself or say who sent a message, state exactly these facts; never claim another company or model, and do not say you cannot see them."
+        var facts = ["service label: \(label)\(isCustom ? " (a custom endpoint the owner named)" : "")",
+                     "model: \(model)"]
+        if let address {
+            facts.append("endpoint: \(address)")
+            if runsOnOwnNetwork(address) { facts.append("runs on: the owner's own network at that address, not a cloud vendor's data centre") }
+        }
+        return "This chat is driven by these facts, read from the app's settings at run time:\n- " +
+            facts.joined(separator: "\n- ") +
+            "\nState exactly these facts when you introduce yourself or say who sent a message. The service label is only the name the owner gave the endpoint; when the label and the endpoint disagree, describe the endpoint and the model, not the label's company. Do not say you cannot see these facts."
+    }
+
+    /// True for loopback, LAN and .local addresses: servers the owner runs, not a vendor's cloud.
+    private static func runsOnOwnNetwork(_ address: String) -> Bool {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = URLComponents(string: trimmed) ?? URLComponents(string: "http://" + trimmed)
+        guard let host = components?.host?.lowercased(), !host.isEmpty else { return false }
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" { return true }
+        if host.hasSuffix(".local") { return true }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        if parts[0] == 10 || parts[0] == 127 { return true }
+        if parts[0] == 192 && parts[1] == 168 { return true }
+        if parts[0] == 169 && parts[1] == 254 { return true }
+        if parts[0] == 172 && (16...31).contains(parts[1]) { return true }
+        return false
     }
 
     static let splitViewInstructions = """
@@ -102,6 +128,7 @@ enum Harness {
         }
         return "Use these iPhone bundle ids for apps named in this request:\n" + lines.joined(separator: "\n")
     }
+
     /// Poki's sandbox browser tools sit beside the phone tools.
     static var tools: [ToolSpec] {
         toolSpecs(inSplitView: false, includeScreenHistory: HistoryCapture.agentQueryAllowed)
