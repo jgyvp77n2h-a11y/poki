@@ -140,6 +140,11 @@ enum Harness {
         description: "Find an app on this iPhone and its bundle id for {launch}. name: the app's name in any language (\"淘宝\", \"Notes\"); answers the installed apps with that name from the phone's own app list, or, when none is installed, the App Store's matches marked not installed with their links. purpose: what an app should do (\"parking\"); answers App Store apps for it, installed ones first, with links for the others. Launch only ids it says are installed. When it says it could not tell, the app may still be there.",
         schema: ["type": "object", "properties": ["name": string, "purpose": string], "additionalProperties": false])
 
+    static let webSearch = ToolSpec(
+        name: "web_search",
+        description: "Search the public web for current facts, sources, or identity information not fixed by the backend facts or exact model-family mapping. Use when the model id is unknown, the answer needs recent public information, or the user asks for web sources. Base the answer only on returned search results and cite the source name or link briefly.",
+        schema: object(["query": string], ["query"]))
+
     static var splitViewTools: [ToolSpec] {
         toolSpecs(inSplitView: true, includeScreenHistory: HistoryCapture.agentQueryAllowed)
     }
@@ -148,7 +153,8 @@ enum Harness {
     /// The current permission determines which ones are declared for each request.
     static func toolSpecs(inSplitView: Bool, includeScreenHistory: Bool) -> [ToolSpec] {
         if !inSplitView {
-            return catalogTools(includeScreenHistory: includeScreenHistory) + [findApp] + WebTools.specs + [reportPlan, finishTask]
+            let searchTools = WebSearchStore.isEnabled ? [webSearch] : []
+            return catalogTools(includeScreenHistory: includeScreenHistory) + [findApp] + WebTools.specs + searchTools + [reportPlan, finishTask]
         }
         return [
             ToolSpec(name: "look", description: "Read the app, numbered UI elements and screenshot of the left or right pane. Select a pane explicitly when you first read and whenever moving between apps. Points use the selected screenshot’s own coordinates.",
@@ -191,7 +197,7 @@ enum Harness {
 
     static let finishTask = ToolSpec(
         name: "finish_task",
-        description: "Finish after the last observation verifies the requested result. If unable to complete, set success=false and explain what was completed, what blocked completion and what was tried. details must contain the requested facts, not only a page title; every value must match a whole current label or value. Declare answer.kind: action for a performed change, field for fixed values, list for requested entries. Read tasks must never use action. For field, items select current refs and label/value; when a field is combined into a label such as \"Capacity,90%\", use prefix \"Capacity,\" and suffix \"%\" to preserve the field identity while reading a new value. For list, items select all requested current rows in order with their names/times; start_ref and end_ref identify unique section labels immediately before and after those rows. Omit section refs if no reliable boundaries exist. Never invent refs or use a heading as a requested value.",
+        description: "Finish after the last observation verifies the requested result. If unable to complete, set success=false and explain what was completed, what blocked completion and what was tried. details must contain the requested facts, not only a page title; every value must match a whole current label or value. Declare answer.kind: action for a performed change, field for fixed values, list for requested entries. Read tasks must never use action. For field, items select current refs and label/value; when a field is combined into a label such as \"Capacity,90%\", use prefix \"Capacity,\" and suffix \"%\" to preserve the field identity while reading a new value. For list, items select all requested rows in order with their names/times; start_ref and end_ref identify unique section labels immediately before and after those rows. Omit section refs if no reliable boundaries exist. Never invent refs or use a heading as a requested value.",
         schema: object([
             "success": ["type": "boolean"], "summary": string,
             "details": ["type": "array", "items": object(["label": string, "value": string], ["label", "value"])],
@@ -221,7 +227,7 @@ enum Harness {
     private static let cardDescription = """
         When the result is items of one app that the owner can pick from or act on (trains, flights, products): those items as a card in the app's own look under the task card, which replaces listing them in the reply. A single result is still a card with one item, such as the one earliest train asked for. Leave it out when the result is not a list of such items. Write its words in the owner's language; the examples are for a Chinese conversation.
         kind 12306.trains, Railway 12306's train list: app "cn.12306.rails12306". Always send it when the owner asked about trains in 12306, for one train or several; never report a train only as details or in the reply. Each item is one train as 12306 shows it: id and title the train number ("G1234"), date ("11月20日 周四"), from and to stations, depart and arrive times ("07:00"), duration ("4小时28分"), price ("¥626"), seats [{name: "二等座", left: "有", "候补", "无" or "5张"}], and note only for a fact that bears on the choice ("15:00 有冲突").
-        recommended is the id of the item that best fits the request; the card selects it until the owner taps another. primary and next are the card's buttons for the selected item: in label and say, {field} becomes that item's field. A tap sends say as the owner's message, so say stands alone with the item's key facts, written as {field}s so they follow the selection. primary: {label: "在 12306 查看", say: "在 12306 打开 {date} {title} 次（{from} {depart} 开）"}. next is the one obvious next step, or left out. To send the train to someone, name the recipient the long-term notes give: {label: "发到公司差旅群", say: "把这趟车发到公司差旅群：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}; when the notes name none: {label: "发送车次", say: "把这趟车发出去：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}. Never offer paying, booking or choosing seats.
+        recommended is the id of the item that best fits the request; the card selects it until the owner taps another. primary and next are the card's buttons for the selected item: in label and say, {field} becomes that item's field. A tap sends say as the owner's message, so say stands alone with the item's key facts, written as {field}s so they follow the selection. primary: {label: "在 12306 查看", say: "在 12306 打开 {date} {title} 次（{from} {depart} 开）"}. next is the one obvious next step, or left out. To send the train to someone, name the recipient the long-term notes give: {label: "发到公司差旅群", "contact": "把这趟车发到公司差旅群：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}; when the notes name none: {label: "发送车次", say: "把这趟车发出去：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}. Never offer paying, booking or choosing seats.
         """
 
     /// task-runner.mjs's answers to its harness tools.
