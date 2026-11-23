@@ -49,6 +49,13 @@ jobs:
           version: ${{ inputs.version }}
           build: ${{ inputs.build }}
           editions: ${{ inputs.editions || 'external' }}
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Poki-build-logs
+          path: build/app-external.log
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: Poki-unsigned
