@@ -24,6 +24,7 @@ concurrency:
 jobs:
   app:
     # The Xcode 27 image: the iOS 27.1 SDK or later, which the iPhone Duo needs (build-ipa).
+    # Standard hosted runner; larger runners are unavailable under the current billing state.
     runs-on: xcode-27
     timeout-minutes: 90
     steps:
