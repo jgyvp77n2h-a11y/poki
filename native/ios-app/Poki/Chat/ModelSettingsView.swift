@@ -34,6 +34,47 @@ struct ModelSettingsView: View {
                 Text("Change the chat model on Poki’s card: tap Poki’s picture at the top of the chat. Dictation in the message field needs no account.")
             }
 
+            // The prompt every message carries: edited here, the shipped one one tap away.
+            Section {
+                NavigationLink { PromptEditorView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("系统提示词")
+                            Text(SystemPromptStore.isEditing ? "已自定义" : "App 默认")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("改的是每条消息开头那段系统提示，不是备忘录里的笔记。")
+            }
+
+            Section {
+                NavigationLink { WebSearchSettingsView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "globe")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("联网搜索")
+                            Text(WebSearchStore.isEnabled ? "已启用" : "未启用")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("搜索由 iPhone 本机执行；API Key 保存在 Keychain，不进入模型上下文。")
+            }
+
             // With no account yet the card above has Add Account, and an empty group would only be a heading.
             if ModelProvider.allCases.contains(where: ModelAccounts.isSetUp) {
             Section {
@@ -80,7 +121,7 @@ struct ModelSettingsView: View {
 /// use (main's In Use rows), and Add Account while there is none. The chat model is changed on Poki's
 /// card, its one place.
 private struct InUseCard: View {
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment("\.dynamicTypeSize) private var typeSize
     var add: () -> Void
 
     var body: some View {
@@ -204,7 +245,7 @@ struct ConnectionCheckFeedback: View {
                 Text(verbatim: AppLocalization.text(LocalizedStringResource("Answered in the \(api.name) API")))
                     .foregroundStyle(Color(.secondaryLabel))
             }
-            if let detail = result.detail { Text(verbatim: detail) }
+            if let detail = result { Text(verbatim: detail) }
             if saved, !result.passed { Text("Saved. Change it and save again, or keep it as it is.") }
         }
         .font(.footnote)
@@ -215,7 +256,7 @@ struct ConnectionCheckFeedback: View {
 /// One account: its type and connection, what it is used for (switches; the ones it can't power are
 /// shown greyed with why), its model, and Delete.
 private struct AccountDetail: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment("\.dismiss) private var dismiss
     var provider: ModelProvider
     @State private var editing = false
     @State private var signingIn = false
@@ -379,7 +420,7 @@ struct LiveVoiceFeature: View {
 /// Add Account: the account types, each with how it connects; choosing one opens its key, address or
 /// sign-in.
 struct AddAccount: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment("\.dismiss) private var dismiss
     @State private var editing: ModelProvider?
     @State private var signingIn = false
     @State private var addingCustom = false
@@ -432,7 +473,7 @@ struct AddAccount: View {
 /// key, or the saved one when the field is empty); Save tests too and keeps the page open on a failure,
 /// saved all the same.
 struct KeyEntry: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment("\.dismiss) private var dismiss
     var provider: ModelProvider
     @State private var key = ""
     @State private var url = ModelKeys.customURL
@@ -458,7 +499,7 @@ struct KeyEntry: View {
                     Text("\(provider.name) key")
                 } footer: {
                     if !provider.wired {
-                        Text("Poki keeps the key now; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
+                        Text("Poki keeps this key; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
                     } else if provider == .custom,
                               ModelCatalog.normalizedAddress(url) != ModelCatalog.normalizedAddress(ModelKeys.customURL),
                               ModelKeys.hasKey(provider) {
@@ -597,7 +638,7 @@ struct KeyEntry: View {
 
 
 struct CustomModelPicker: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment("\.dismiss) private var dismiss
     let models: [String]
     @Binding var selection: String
     @State private var query = ""
@@ -616,7 +657,7 @@ struct CustomModelPicker: View {
                 } else if matches.isEmpty {
                     Text("No matching models.").foregroundStyle(.secondary)
                 } else {
-                    ForEach(matches, id: \.self) { model in
+                    ForEach(matches, id: "\.self") { model in
                         Button {
                             selection = model
                             dismiss()
