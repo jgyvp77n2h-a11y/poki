@@ -1048,7 +1048,7 @@ final class ChatModel {
                 if args["finish"] as? Bool == true || actions.contains(where: { $0["launch"] != nil || $0["run"] != nil || $0["path"] != nil || $0["button"] != nil }) {
                     return splitViewRefusal("Keep both apps in place. Do not launch apps, use hardware buttons, or run skills. Finish with finish_task.")
                 }
-            case "report_plan", "finish_task", "status", "screen_history": break
+            case "report_plan", "finish_task", "status", "screen_history", "web_search": break
             default:
                 return splitViewRefusal("Use the two visible apps with look and do for this task.")
             }
@@ -1081,6 +1081,14 @@ final class ChatModel {
         case "find_app":
             let found = await InstalledApps.shared.find(name: args["name"] as? String, purpose: args["purpose"] as? String)
             return PokiCore.ToolAnswer(text: found.text, jpeg: nil, isError: found.isError)
+        case "web_search":
+            do {
+                let query = (args["query"] as? String) ?? ""
+                let text = try await WebSearchExecutor.search(query: query)
+                return PokiCore.ToolAnswer(text: text, jpeg: nil, isError: false)
+            } catch {
+                return PokiCore.ToolAnswer(text: "web_search error: \(error.localizedDescription)", jpeg: nil, isError: true)
+            }
         case "look", "do":
             if let refusal = selectRoute(.app) { return refusal }
             phoneStepUnderWay = true
