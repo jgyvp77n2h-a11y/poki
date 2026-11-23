@@ -37,7 +37,7 @@ enum WebSearchStore {
     }
 
     static var apiKey: String {
-        guard let raw = try? Keychain.read(keychainAccount), let data = raw,
+        guard let data = try? Keychain.read(keychainAccount),
               let key = String(data: data, encoding: .utf8) else { return "" }
         return key
     }
