@@ -3,6 +3,8 @@
 name: iOS IPA
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   # Builds the app from the calling run's commit with a given version (the steps are in .github/actions/build-ipa).
   workflow_call:
@@ -13,7 +15,7 @@ on:
       editions: { type: string, required: false, default: external }
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   app:
@@ -48,3 +50,7 @@ jobs:
             build/app-local
             ~/Library/Developer/Xcode/DerivedData/ModuleCache.noindex
           key: ipa-xcode27-${{ github.sha }}
+      - name: Publish the unsigned IPA as a release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create patched-${{ github.run_number }} out/* --title "patched ${{ github.run_number }}" --notes "Poki built with the backend-awareness patch"
