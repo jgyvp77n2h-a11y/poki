@@ -18,8 +18,12 @@ inputs:
     description: external and/or local
     required: false
     default: external
+  minimumSDK:
+    description: Minimum iOS SDK accepted by this build
+    required: false
+    default: 27.1
 
-# The caller saves the caches (actions/cache/save with these keys and the same paths) after it has
+# The caller saves the caches (actions/cache/save with these keys and same paths) after it has
 # published, so saving never delays a release. Only caches saved on main help other runs.
 outputs:
   rust-key:
@@ -34,8 +38,8 @@ runs:
   steps:
     # An app linked against an SDK before iOS 27.1 is letterboxed on both displays of the iPhone
     # Duo. Its own UIScreen is then the letterbox, the picture XCTest takes is the whole panel, and
-    # every screen read ends in screenshot_does_not_match_active_display (#419). So the IPA is
-    # built with the newest released Xcode of the runner, and never with an SDK before 27.1.
+    # every screen read ends in screenshot_does_not_match_active_display (#419). The prealpha Duo
+    # build keeps the 27.1 floor; hand-test builds may pass a lower floor for their runner.
     - name: Use the newest Xcode
       shell: bash
       run: |
@@ -44,66 +48,12 @@ runs:
         sudo xcode-select -s "$XCODE/Contents/Developer"
         xcodebuild -version
         SDK="$(xcrun --sdk iphoneos --show-sdk-version)"
-        echo "iOS SDK $SDK"
-        if [ "$(printf '%s\n' 27.1 "$SDK" | sort -V | head -1)" != 27.1 ]; then
-          echo "::error::The iOS SDK is $SDK. Poki needs 27.1 or later to fill the iPhone Duo's displays; run this job on the xcode-27 runner."
+        MIN_SDK="${{ inputs.minimumSDK }}"
+        echo "iOS SDK $SDK (minimum $MIN_SDK)"
+        if [ "$(printf '%s\n' "$MIN_SDK" "$SDK" | sort -V | head -1)" != "$MIN_SDK" ]; then
+          echo "::error::The iOS SDK is $SDK. This build needs $MIN_SDK or later; choose a runner with that Xcode version."
           exit 1
         fi
-
-    # The owner's build-time patches, applied in the runner's checkout only: the prompt editor row
-    # on the model page, and the harness reading the editable prompt instead of the bundle file.
-    - name: Owner patches
-      shell: bash
-      run: |
-        set -euo pipefail
-        python3 - <<'PY'
-        import pathlib
-
-        harness = pathlib.Path('native/ios-app/Poki/Chat/Harness/Harness.swift')
-        s = harness.read_text()
-        old = "    static let system: String = {\n        guard let url = Bundle.main.url(forResource: \"agent-system\", withExtension: \"md\"), let text = try? String(contentsOf: url, encoding: .utf8) else { return \"\" }\n        return text\n    }()"
-        new = "    static var system: String { SystemPromptStore.current }"
-        if old in s:
-            s = s.replace(old, new)
-        elif new not in s:
-            raise SystemExit('::error::the harness prompt hook could not be applied')
-        s = s.replace('Do not say you cannot see these facts.', 'Do not say you cannot see these facts. Only this one preset is in your context: other saved presets are invisible to you, so never guess or speak for them.')
-        if 'Only this one preset' not in s:
-            raise SystemExit('::error::the preset-isolation sentence was not applied')
-        harness.write_text(s)
-
-        settings = pathlib.Path('native/ios-app/Poki/Chat/ModelSettingsView.swift')
-        t = settings.read_text()
-        anchor = "            // With no account yet the card above has Add Account, and an empty group would only be a heading."
-        row = '\n'.join([
-            "            // The prompt every message carries: edited here, the shipped one one tap away.",
-            "            Section {",
-            "                NavigationLink { PromptEditorView() } label: {",
-            "                    HStack(spacing: 12) {",
-            "                        Image(systemName: \"text.alignleft\")",
-            "                            .font(.title3)",
-            "                            .foregroundStyle(Color.accentColor)",
-            "                            .frame(width: 28)",
-            "                        VStack(alignment: .leading, spacing: 2) {",
-            "                            Text(\"系统提示词\")",
-            "                            Text(SystemPromptStore.isEditing ? \"已自定义\" : \"App 默认\")",
-            "                                .font(.caption)",
-            "                                .foregroundStyle(Color(.secondaryLabel))",
-            "                        }",
-            "                        Spacer()",
-            "                    }",
-            "                }",
-            "            } footer: {",
-            "                Text(\"改的是每条消息开头那段系统提示，不是备忘录里的笔记。\")",
-            "            }",
-            "",
-        ]) + '\n'
-        if 'PromptEditorView()' not in t:
-            if anchor not in t:
-                raise SystemExit('::error::the model page anchor moved; the prompt row was not added')
-            settings.write_text(t.replace(anchor, row + anchor, 1))
-        print('owner patches applied')
-        PY
 
     # The phone's Rust library is rebuilt only when its sources change.
     - id: rust-key
