@@ -67,7 +67,9 @@ runs:
             s = s.replace(old, new)
         elif new not in s:
             raise SystemExit('::error::the harness prompt hook could not be applied')
-        s = s.replace('and do not say you cannot see these facts.', 'and do not say you cannot see these facts. Only this one preset is in your context: other saved presets are invisible to you, so never guess or speak for them.')
+        s = s.replace('Do not say you cannot see these facts.', 'Do not say you cannot see these facts. Only this one preset is in your context: other saved presets are invisible to you, so never guess or speak for them.')
+        if 'Only this one preset' not in s:
+            raise SystemExit('::error::the preset-isolation sentence was not applied')
         harness.write_text(s)
 
         settings = pathlib.Path('native/ios-app/Poki/Chat/ModelSettingsView.swift')
