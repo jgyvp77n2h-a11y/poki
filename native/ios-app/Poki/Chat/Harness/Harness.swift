@@ -19,7 +19,24 @@ enum Harness {
     }()
 
     static var instructions: String {
-        [system, PokiCore.toolInstructions(includeScreenHistory: HistoryCapture.agentQueryAllowed), WebTools.instructions].joined(separator: "\n\n")
+        [system, backendLine, PokiCore.toolInstructions(includeScreenHistory: HistoryCapture.agentQueryAllowed), WebTools.instructions].joined(separator: "\n\n")
+    }
+
+    /// The model service this chat is on: what the model needs to say what drives it, instead of
+    /// guessing. Read when a task starts, so a change in Settings shows on the next task.
+    @MainActor private static var backendLine: String {
+        let provider = ModelKeys.selectedProvider
+        var name = provider.name
+        var model = ModelKeys.selectedModel
+        var address: String?
+        if provider == .custom, let choice = CustomProviders.parse(model), let service = CustomProviders.provider(choice.provider) {
+            name = service.displayName
+            model = choice.model
+            address = service.primary?.url
+        }
+        var facts = ["provider: \(name)", "model: \(model)"]
+        if let address { facts.append("address: \(address)") }
+        return "This chat is driven by " + facts.joined(separator: " · ") + ". When you introduce yourself or say who sent a message, state exactly these facts; never claim another company or model, and do not say you cannot see them."
     }
 
     static let splitViewInstructions = """
@@ -32,7 +49,7 @@ enum Harness {
     /// The instructions for a task: the above, then the saved notes and the skills that fit it.
     @MainActor static func instructions(for task: String, inSplitView: Bool = false) -> String {
         if inSplitView {
-            var parts = [splitViewInstructions]
+            var parts = [splitViewInstructions, backendLine]
             if HistoryCapture.agentQueryAllowed { parts.append(PokiCore.screenHistoryInstructions) }
             if ApprovalClassifier.mode == .reply { parts.append(replyApprovals) }
             return parts.joined(separator: "\n\n")
