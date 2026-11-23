@@ -34,6 +34,27 @@ struct ModelSettingsView: View {
                 Text("Change the chat model on Poki’s card: tap Poki’s picture at the top of the chat. Dictation in the message field needs no account.")
             }
 
+            // The prompt every message carries: edited here, the shipped one one tap away.
+            Section {
+                NavigationLink { PromptEditorView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("系统提示词")
+                            Text(SystemPromptStore.isEditing ? "已自定义" : "App 默认")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("改的是每条消息开头那段系统提示，不是备忘录里的笔记。")
+            }
+
             // With no account yet the card above has Add Account, and an empty group would only be a heading.
             if ModelProvider.allCases.contains(where: ModelAccounts.isSetUp) {
             Section {
