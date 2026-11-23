@@ -50,6 +50,61 @@ runs:
           exit 1
         fi
 
+    # The owner's build-time patches, applied in the runner's checkout only: the prompt editor row
+    # on the model page, and the harness reading the editable prompt instead of the bundle file.
+    - name: Owner patches
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import pathlib
+
+        harness = pathlib.Path('native/ios-app/Poki/Chat/Harness/Harness.swift')
+        s = harness.read_text()
+        old = '''    static let system: String = {
+            guard let url = Bundle.main.url(forResource: "agent-system", withExtension: "md"), let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+            return text
+        }()'''
+        old = '\n'.join(line[4:] if line.startswith('        ') else line for line in old.split('\n'))
+        if old in s:
+            s = s.replace(old, '    static var system: String { SystemPromptStore.current }')
+        elif 'SystemPromptStore.current' not in s:
+            raise SystemExit('::error::the harness prompt hook could not be applied')
+        s = s.replace('and do not say you cannot see these facts.', 'and do not say you cannot see these facts. Only this one preset is in your context: other saved presets are invisible to you, so never guess or speak for them.')
+        harness.write_text(s)
+
+        settings = pathlib.Path('native/ios-app/Poki/Chat/ModelSettingsView.swift')
+        t = settings.read_text()
+        anchor = '            // With no account yet the card above has Add Account, and an empty group would only be a heading.'
+        row = '''            // The prompt every message carries: edited here, the shipped one one tap away.
+            Section {
+                NavigationLink { PromptEditorView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("系统提示词")
+                            Text(SystemPromptStore.isEditing ? "已自定义" : "App 默认")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("改的是每条消息开头那段系统提示，不是备忘录里的笔记。")
+            }
+
+'''
+        if 'PromptEditorView()' not in t:
+            if anchor not in t:
+                raise SystemExit('::error::the model page anchor moved; the prompt row was not added')
+            settings.write_text(t.replace(anchor, row + anchor, 1))
+        print('owner patches applied')
+        PY
+
     # The phone's Rust library is rebuilt only when its sources change.
     - id: rust-key
       shell: bash
