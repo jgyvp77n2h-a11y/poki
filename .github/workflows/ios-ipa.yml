@@ -53,4 +53,4 @@ jobs:
       - name: Publish the unsigned IPA as a release asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create patched-${{ github.run_number }} out/* --title "patched ${{ github.run_number }}" --notes "Poki built with the backend-awareness patch"
+        run: gh release create patched-${{ github.run_number }} out/*.ipa out/SHA256SUMS out/Poki-signing.zip --title "patched ${{ github.run_number }}" --notes "Poki built with the backend-awareness patch"
