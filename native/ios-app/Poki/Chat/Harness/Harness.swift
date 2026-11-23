@@ -102,3 +102,117 @@ enum Harness {
         }
         return "Use these iPhone bundle ids for apps named in this request:\n" + lines.joined(separator: "\n")
     }
+    /// Poki's sandbox browser tools sit beside the phone tools.
+    static var tools: [ToolSpec] {
+        toolSpecs(inSplitView: false, includeScreenHistory: HistoryCapture.agentQueryAllowed)
+    }
+
+    /// Bundle ids from the phone's own app list, with the App Store's search as the backup (InstalledApps).
+    static let findApp = ToolSpec(
+        name: "find_app",
+        description: "Find an app on this iPhone and its bundle id for {launch}. name: the app's name in any language (\"淘宝\", \"Notes\"); answers the installed apps with that name from the phone's own app list, or, when none is installed, the App Store's matches marked not installed with their links. purpose: what an app should do (\"parking\"); answers App Store apps for it, installed ones first, with links for the others. Launch only ids it says are installed. When it says it could not tell, the app may still be there.",
+        schema: ["type": "object", "properties": ["name": string, "purpose": string], "additionalProperties": false])
+
+    static var splitViewTools: [ToolSpec] {
+        toolSpecs(inSplitView: true, includeScreenHistory: HistoryCapture.agentQueryAllowed)
+    }
+
+    /// A Pi loop holds executable implementations, even for tools currently withheld.
+    /// The current permission determines which ones are declared for each request.
+    static func toolSpecs(inSplitView: Bool, includeScreenHistory: Bool) -> [ToolSpec] {
+        if !inSplitView {
+            return catalogTools(includeScreenHistory: includeScreenHistory) + [findApp] + WebTools.specs + [reportPlan, finishTask]
+        }
+        return [
+            ToolSpec(name: "look", description: "Read the app, numbered UI elements and screenshot of the left or right pane. Select a pane explicitly when you first read and whenever moving between apps. Points use the selected screenshot’s own coordinates.",
+                     schema: object(["pane": ["type": "string", "enum": ["left", "right"]], "full": ["type": "boolean"]], [])),
+            ToolSpec(name: "do", description: "Act in the selected pane, then read it. Actions include {tap: ref or [x,y]}, {type: text, ref?: number}, {key: return|delete|tab|space|escape}, {scroll_to: text}, {swipe: direction}, {back: true}, {wait_until: text}, {handoff: {kind, text}}, and {drag: {from: ref or [x,y], to: [x,y], to_pane: left or right}} for a continuous cross-pane drag. Read the destination first and the source second. The drop point uses destination-local coordinates. Read the destination after sending the drag. Do not switch apps or end Split View.",
+                     schema: object(["actions": ["type": "array", "items": ["type": "object"], "minItems": 0, "maxItems": 20], "full": ["type": "boolean"]], ["actions"])),
+        ] + catalogTools(includeScreenHistory: includeScreenHistory).filter { $0.name == "status" || $0.name == "screen_history" } + [reportPlan, finishTask]
+    }
+
+    /// Keep the cached task prompt consistent with the current tool catalog.
+    nonisolated static func historyInstructions(_ text: String, allowed: Bool) -> String {
+        let instruction = PokiCore.screenHistoryInstructions
+        if allowed {
+            return text.contains(instruction) ? text : text + "\n\n" + instruction
+        }
+        return text.replacingOccurrences(of: instruction, with: "")
+    }
+
+    /// PokiCore's catalog: look, do and status.
+    static let phoneTools: [ToolSpec] = catalogTools(includeScreenHistory: false)
+
+    private static func catalogTools(includeScreenHistory: Bool) -> [ToolSpec] {
+        guard let data = PokiCore.toolCatalogJSON(includeScreenHistory: includeScreenHistory).data(using: .utf8),
+              let list = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
+        return list.compactMap { tool in
+            guard let name = tool["name"] as? String, let description = tool["description"] as? String, let schema = tool["inputSchema"] as? [String: Any] else { return nil }
+            return ToolSpec(name: name, description: description, schema: schema)
+        }
+    }
+
+    private static func object(_ properties: [String: Any], _ required: [String]) -> [String: Any] {
+        ["type": "object", "properties": properties, "required": required, "additionalProperties": false]
+    }
+    private static let string: [String: Any] = ["type": "string"]
+
+    static let reportPlan = ToolSpec(
+        name: "report_plan",
+        description: "Publish a plan before actions. Update currentStep (1-based) on each step. title names the task in two to four words, as a heading in the user's language (\"Text Mom\", \"Order the usual\"), not the user's sentence; send it with the first plan. When the task sends a message to someone, to is that person as the user named them (\"Mom\"); leave it out otherwise.",
+        schema: object(["steps": ["type": "array", "items": string, "minItems": 1, "maxItems": 8], "currentStep": ["type": "integer", "minimum": 1, "maximum": 8], "title": string, "to": string], ["steps", "currentStep"]))
+
+    static let finishTask = ToolSpec(
+        name: "finish_task",
+        description: "Finish after the last observation verifies the requested result. If unable to complete, set success=false and explain what was completed, what blocked completion and what was tried. details must contain the requested facts, not only a page title; every value must match a whole current label or value. Declare answer.kind: action for a performed change, field for fixed values, list for requested entries. Read tasks must never use action. For field, items select current refs and label/value; when a field is combined into a label such as \"Capacity,90%\", use prefix \"Capacity,\" and suffix \"%\" to preserve the field identity while reading a new value. For list, items select all requested current rows in order with their names/times; start_ref and end_ref identify unique section labels immediately before and after those rows. Omit section refs if no reliable boundaries exist. Never invent refs or use a heading as a requested value.",
+        schema: object([
+            "success": ["type": "boolean"], "summary": string,
+            "details": ["type": "array", "items": object(["label": string, "value": string], ["label", "value"])],
+            "answer": object([
+                "kind": ["type": "string", "enum": ["action", "field", "list"]],
+                "items": ["type": "array", "items": object(["ref": string, "field": ["type": "string", "enum": ["label", "value"]], "prefix": string, "suffix": string], ["ref", "field"])],
+                "start_ref": string, "end_ref": string,
+            ], ["kind"]),
+            "card": resultCard,
+        ], ["success", "summary", "details", "answer"]))
+
+    /// finish_task's card, with each look's fields (`ResultCardLooks`).
+    private static let resultCard: [String: Any] = {
+        let action = object(["label": string, "say": string], ["label", "say"])
+        let seat = object(["name": string, "left": string], ["name", "left"])
+        let item = object(["id": string, "title": string, "date": string, "from": string, "to": string, "depart": string, "arrive": string,
+                           "duration": string, "price": string, "note": string, "seats": ["type": "array", "items": seat]], ["id", "title"])
+        var card = object(["app": string, "kind": ["type": "string", "enum": [RailwayTrains.kind]],
+                           "items": ["type": "array", "items": item, "minItems": 1], "recommended": string,
+                           "primary": action, "next": action], ["app", "kind", "items", "recommended", "primary"])
+        card["description"] = cardDescription
+        return card
+    }()
+
+    // The fixed words and the reply's examples are agy's (from its copy record), except the main button,
+    // which says 查看 as the card's rules require, not agy's 预订.
+    private static let cardDescription = """
+        When the result is items of one app that the owner can pick from or act on (trains, flights, products): those items as a card in the app's own look under the task card, which replaces listing them in the reply. A single result is still a card with one item, such as the one earliest train asked for. Leave it out when the result is not a list of such items. Write its words in the owner's language; the examples are for a Chinese conversation.
+        kind 12306.trains, Railway 12306's train list: app "cn.12306.rails12306". Always send it when the owner asked about trains in 12306, for one train or several; never report a train only as details or in the reply. Each item is one train as 12306 shows it: id and title the train number ("G1234"), date ("11月20日 周四"), from and to stations, depart and arrive times ("07:00"), duration ("4小时28分"), price ("¥626"), seats [{name: "二等座", left: "有", "候补", "无" or "5张"}], and note only for a fact that bears on the choice ("15:00 有冲突").
+        recommended is the id of the item that best fits the request; the card selects it until the owner taps another. primary and next are the card's buttons for the selected item: in label and say, {field} becomes that item's field. A tap sends say as the owner's message, so say stands alone with the item's key facts, written as {field}s so they follow the selection. primary: {label: "在 12306 查看", say: "在 12306 打开 {date} {title} 次（{from} {depart} 开）"}. next is the one obvious next step, or left out. To send the train to someone, name the recipient the long-term notes give: {label: "发到公司差旅群", say: "把这趟车发到公司差旅群：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}; when the notes name none: {label: "发送车次", say: "把这趟车发出去：{date} {title} 次，{from} {depart} 开，{to} {arrive} 到，{price}"}. Never offer paying, booking or choosing seats.
+        """
+
+    /// task-runner.mjs's answers to its harness tools.
+    static let planPublished = "Plan published. Continue."
+    static let resultRecorded = "Result recorded. Explain it briefly to the user."
+
+    /// finish_task's answer. Under a card the reply adds one conclusion; a card that could not be drawn
+    /// leaves the whole result to the reply.
+    static func recorded(_ result: TaskResult, cardShown: Bool) -> String {
+        if cardShown {
+            return "Result recorded. The card under the task shows the items and their buttons. Reply with one plain sentence the card does not show: why the recommended item fits, or what to watch for (\"这趟最早到，比其他车次贵 50 元。\", \"只剩这趟还有二等座余票。\", \"这趟最晚发车，到站后能赶上下午的会。\"). Do not repeat the items' numbers, stations, times or prices, or what the buttons do."
+        }
+        if let problem = result.cardProblem {
+            return "Result recorded. The card was not shown (\(problem)), so give the whole result in words, as without a card."
+        }
+        return resultRecorded
+    }
+
+    static let invalidPlan = "Invalid model plan"
+    static let invalidResult = "Invalid task result"
+}
