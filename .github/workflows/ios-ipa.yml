@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           if git apply --check .github/patches/chat-web-search.patch; then
             git apply .github/patches/chat-web-search.patch
-            git add native/ios-app/Poki/Chat/ChatModel.swift
+            git add native/ios-app/Poki/Chat/ChatModel.swift native/ios-app/Poki/Chat/WebSearch/WebSearch.swift
             git commit -m "fix: route native web_search in ChatModel [skip ci]"
             git push origin HEAD:main
           fi
