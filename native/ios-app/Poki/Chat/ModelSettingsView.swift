@@ -121,7 +121,7 @@ struct ModelSettingsView: View {
 /// use (main's In Use rows), and Add Account while there is none. The chat model is changed on Poki's
 /// card, its one place.
 private struct InUseCard: View {
-    @Environment("\.dynamicTypeSize) private var typeSize
+    @Environment(\.dynamicTypeSize) private var typeSize
     var add: () -> Void
 
     var body: some View {
@@ -171,7 +171,7 @@ private struct InUseCard: View {
     }
 }
 
-/// What a model account is and what it can power.
+/// What a model account is and what it can work.
 enum ModelAccounts {
     static func isSetUp(_ provider: ModelProvider) -> Bool {
         switch provider {
@@ -245,7 +245,7 @@ struct ConnectionCheckFeedback: View {
                 Text(verbatim: AppLocalization.text(LocalizedStringResource("Answered in the \(api.name) API")))
                     .foregroundStyle(Color(.secondaryLabel))
             }
-            if let detail = result { Text(verbatim: detail) }
+            if let detail = result.detail { Text(verbatim: detail) }
             if saved, !result.passed { Text("Saved. Change it and save again, or keep it as it is.") }
         }
         .font(.footnote)
@@ -256,7 +256,7 @@ struct ConnectionCheckFeedback: View {
 /// One account: its type and connection, what it is used for (switches; the ones it can't power are
 /// shown greyed with why), its model, and Delete.
 private struct AccountDetail: View {
-    @Environment("\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     var provider: ModelProvider
     @State private var editing = false
     @State private var signingIn = false
@@ -290,7 +290,7 @@ private struct AccountDetail: View {
                 Text("Use This Account For")
             } footer: {
                 if !ModelAccounts.canChat(provider) {
-                    Text("Poki keeps this key; chatting with \(provider.name) comes in an update.")
+                    Text("Poki keeps the key now; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
                 } else if !ModelAccounts.canTalkLive(provider) {
                     Text("Live voice runs on a Realtime API, which an OpenAI API key or a custom endpoint can open. Dictation in the message field works with this account.")
                 }
@@ -420,7 +420,7 @@ struct LiveVoiceFeature: View {
 /// Add Account: the account types, each with how it connects; choosing one opens its key, address or
 /// sign-in.
 struct AddAccount: View {
-    @Environment("\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @State private var editing: ModelProvider?
     @State private var signingIn = false
     @State private var addingCustom = false
@@ -473,7 +473,7 @@ struct AddAccount: View {
 /// key, or the saved one when the field is empty); Save tests too and keeps the page open on a failure,
 /// saved all the same.
 struct KeyEntry: View {
-    @Environment("\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     var provider: ModelProvider
     @State private var key = ""
     @State private var url = ModelKeys.customURL
@@ -499,9 +499,9 @@ struct KeyEntry: View {
                     Text("\(provider.name) key")
                 } footer: {
                     if !provider.wired {
-                        Text("Poki keeps this key; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
+                        Text("Poki keeps the key now; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
                     } else if provider == .custom,
-                              ModelCatalog.normalizedAddress(url) != ModelCatalog.normalizedAddress(ModelKeys.customURL),
+                              ModelCatalog.normalizedAddress(url) != ModelKeys.normalizedAddress(ModelKeys.customURL),
                               ModelKeys.hasKey(provider) {
                         Text("The saved key belongs to the previous address. Enter a key for this service if it needs one.")
                     } else if ModelKeys.hasKey(provider) {
@@ -638,7 +638,7 @@ struct KeyEntry: View {
 
 
 struct CustomModelPicker: View {
-    @Environment("\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     let models: [String]
     @Binding var selection: String
     @State private var query = ""
@@ -657,7 +657,7 @@ struct CustomModelPicker: View {
                 } else if matches.isEmpty {
                     Text("No matching models.").foregroundStyle(.secondary)
                 } else {
-                    ForEach(matches, id: "\.self") { model in
+                    ForEach(matches, id: \.self) { model in
                         Button {
                             selection = model
                             dismiss()
