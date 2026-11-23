@@ -171,7 +171,7 @@ private struct InUseCard: View {
     }
 }
 
-/// What a model account is and what it can work.
+/// What a model account is and what it can power.
 enum ModelAccounts {
     static func isSetUp(_ provider: ModelProvider) -> Bool {
         switch provider {
@@ -290,7 +290,7 @@ private struct AccountDetail: View {
                 Text("Use This Account For")
             } footer: {
                 if !ModelAccounts.canChat(provider) {
-                    Text("Poki keeps the key now; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
+                    Text("Poki keeps this key; chatting with \(provider.name) comes in an update.")
                 } else if !ModelAccounts.canTalkLive(provider) {
                     Text("Live voice runs on a Realtime API, which an OpenAI API key or a custom endpoint can open. Dictation in the message field works with this account.")
                 }
@@ -447,7 +447,7 @@ struct AddAccount: View {
                         }
                     }
                 } footer: {
-                    Text("Text chat works with every account. Live voice needs an OpenAI API key or a custom endpoint with the Realtime API. Add as many custom endpoints as you like.")
+                    Text("Text chat works with every account. Live voice needs an OpenAI API key or a custom endpoint with the Realtime API. Add as many custom endpoints as you would like.")
                 }
             }
             .listStyle(.insetGrouped)
@@ -501,7 +501,7 @@ struct KeyEntry: View {
                     if !provider.wired {
                         Text("Poki keeps the key now; chatting with \(provider.name) comes in an update. Until then, choose Anthropic or OpenAI.")
                     } else if provider == .custom,
-                              ModelCatalog.normalizedAddress(url) != ModelKeys.normalizedAddress(ModelKeys.customURL),
+                              ModelCatalog.normalizedAddress(url) != ModelCatalog.normalizedAddress(ModelKeys.customURL),
                               ModelKeys.hasKey(provider) {
                         Text("The saved key belongs to the previous address. Enter a key for this service if it needs one.")
                     } else if ModelKeys.hasKey(provider) {
