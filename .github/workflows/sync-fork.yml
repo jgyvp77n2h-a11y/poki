@@ -1,0 +1,35 @@
+name: Sync fork to upstream
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    if: github.actor != 'fork-sync'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild main from upstream plus the fork patch
+        env:
+          PATCH: https://aka.doubaocdn.com/s/r42qNUXlxp
+        run: |
+          set -euo pipefail
+          git config user.name "fork-sync"
+          git config user.email "fork-sync@users.noreply.github.com"
+          curl -fsSL "$PATCH" -o /tmp/fork.patch
+          git fetch --no-tags --depth=1 https://github.com/JosssphZhou/poki.git 226771994f07fc19ba8fb179cb0364c4e12b50c6
+          git reset --hard FETCH_HEAD
+          git apply --whitespace=nowarn /tmp/fork.patch
+          git add -A
+          git commit -m "feat(ios): follow upstream main and keep native web_search, presets and the ATS exception"
+          git push --force origin HEAD:main
+      - name: Start the hand-test build on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X POST "repos/${{ github.repository }}/actions/workflows/ios-ipa.yml/dispatches" -f ref=main
