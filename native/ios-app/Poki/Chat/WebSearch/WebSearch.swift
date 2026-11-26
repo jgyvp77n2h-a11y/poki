@@ -1,7 +1,7 @@
 import Foundation
-import Security
-import SwiftUI
 
+/// One search endpoint as the owner describes it: where it is, how the query travels, and which fields
+/// of its JSON hold a title, a link and a snippet.
 struct WebSearchConfig: Codable, Equatable {
     var url: String = ""
     var method: String = "GET"
@@ -20,48 +20,8 @@ struct WebSearchConfig: Codable, Equatable {
     var timeout: Int = 20
 }
 
-enum WebSearchStore {
-    static let configKey = "webSearch.config.v1"
-    static let keychainAccount = "webSearch.apiKey.v1"
-
-    static var config: WebSearchConfig {
-        guard let data = UserDefaults.standard.data(forKey: configKey),
-              let value = try? JSONDecoder().decode(WebSearchConfig.self, from: data) else { return WebSearchConfig() }
-        return value
-    }
-
-    static func save(_ config: WebSearchConfig) {
-        let data = try? JSONEncoder().encode(config)
-        UserDefaults.standard.set(data, forKey: configKey)
-        ModelKeys.saved += 1
-    }
-
-    static var apiKey: String {
-        guard let data = try? Keychain.read(keychainAccount),
-              let key = String(data: data, encoding: .utf8) else { return "" }
-        return key
-    }
-
-    static func save(apiKey: String) {
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if key.isEmpty {
-            Keychain.delete(keychainAccount)
-        } else {
-            try? Keychain.write(Data(key.utf8), account: keychainAccount)
-        }
-        ModelKeys.saved += 1
-    }
-
-    static func save(_ config: WebSearchConfig, apiKey: String) {
-        save(config)
-        save(apiKey: apiKey)
-    }
-
-    static var isEnabled: Bool {
-        !config.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-}
-
+/// Runs one search on this iPhone with the preset the owner is using now. Reads the preset at call time,
+/// so a switch in the composer applies to the next message without restarting anything.
 enum WebSearchExecutor {
     struct SearchError: LocalizedError {
         let message: String
@@ -69,10 +29,15 @@ enum WebSearchExecutor {
     }
 
     static func search(query: String) async throws -> String {
+        guard WebSearchStore.isEnabled else { throw SearchError(message: "web_search is off: no preset selected") }
+        return try await search(query: query, config: WebSearchStore.config, key: WebSearchStore.apiKey)
+    }
+
+    /// Runs a search with the given endpoint, so the editor can test the preset it is holding rather than
+    /// whichever one the chat has selected.
+    static func search(query: String, config: WebSearchConfig, key: String) async throws -> String {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { throw SearchError(message: "web_search query is empty") }
-        let config = WebSearchStore.config
-        let key = WebSearchStore.apiKey
         let baseURLText = config.url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let baseURL = URL(string: baseURLText) else { throw SearchError(message: "Invalid web_search URL") }
 
@@ -187,153 +152,5 @@ enum WebSearchExecutor {
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
-    }
-}
-
-struct WebSearchSettingsView: View {
-    @State private var config = WebSearchStore.config
-    @State private var apiKey = WebSearchStore.apiKey
-    @State private var headersText = ""
-    @State private var paramsText = ""
-    @State private var bodyText = ""
-    @State private var busy = false
-    @State private var result = ""
-    @State private var resultFailed = false
-
-    var body: some View {
-        Form {
-            Section {
-                LabeledContent("状态", value: config.url.isEmpty ? "未启用" : "已启用")
-                TextField("https://example.com/search", text: $config.url)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Picker("请求方法", selection: $config.method) {
-                    Text("GET").tag("GET")
-                    Text("POST").tag("POST")
-                }
-                TextField("查询参数名", text: $config.queryParam)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            } header: {
-                Text("搜索服务")
-            }
-
-            Section {
-                SecureField("API Key，不需要可留空", text: $apiKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Key Header", text: $config.keyHeader)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Header 前缀", text: $config.keyScheme)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Key 参数名", text: $config.keyParam)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            } header: {
-                Text("可选 Key")
-            } footer: {
-                Text("Key 保存在 iPhone Keychain。Header 与参数名同时存在时，优先使用 Header。")
-            }
-
-            Section {
-                TextField("结果 JSON 路径", text: $config.resultPath)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("标题字段，逗号分隔", text: Binding(
-                    get: { config.titleKeys.joined(separator: ", ") },
-                    set: { config.titleKeys = splitList($0) }))
-                TextField("链接字段，逗号分隔", text: Binding(
-                    get: { config.urlKeys.joined(separator: ", ") },
-                    set: { config.urlKeys = splitList($0) }))
-                TextField("摘要字段，逗号分隔", text: Binding(
-                    get: { config.snippetKeys.joined(separator: ", ") },
-                    set: { config.snippetKeys = splitList($0) }))
-                TextField("结果条数", value: $config.topK, format: .number).keyboardType(.numberPad)
-                TextField("超时秒数", value: $config.timeout, format: .number).keyboardType(.numberPad)
-            } header: {
-                Text("结果解析")
-            }
-
-            Section {
-                TextEditor(text: $headersText).frame(minHeight: 86)
-                TextEditor(text: $paramsText).frame(minHeight: 86)
-                TextEditor(text: $bodyText).frame(minHeight: 86)
-            } header: {
-                Text("高级 JSON 参数")
-            } footer: {
-                Text("每个文本框都必须是 JSON 对象，例如 {\"Accept-Language\":\"zh-CN\"}；不需要可留空。")
-            }
-
-            Section {
-                Button("保存") { Task { await save(andTest: false) } }
-                Button("保存并测试") { Task { await save(andTest: true) } }
-                if !result.isEmpty {
-                    Text(result).foregroundStyle(resultFailed ? Color.red : Color.green)
-                }
-            }
-        }
-        .navigationTitle("联网搜索")
-        .navigationBarTitleDisplayMode(.inline)
-        .disabled(busy)
-        .onAppear {
-            headersText = jsonText(config.extraHeaders)
-            paramsText = jsonText(config.extraParams)
-            bodyText = jsonText(config.extraBody)
-        }
-    }
-
-    private func save(andTest: Bool) async {
-        busy = true
-        defer { busy = false }
-        do {
-            config.method = config.method == "POST" ? "POST" : "GET"
-            config.queryParam = config.queryParam.trimmedOr("q")
-            config.topK = max(1, min(20, config.topK))
-            config.timeout = max(1, min(60, config.timeout))
-            config.extraHeaders = try parseObject(headersText)
-            config.extraParams = try parseObject(paramsText)
-            config.extraBody = try parseObject(bodyText)
-            WebSearchStore.save(config, apiKey: apiKey)
-            if andTest {
-                result = try await WebSearchExecutor.search(query: "Qwen 是哪家公司开发的")
-                resultFailed = false
-            } else {
-                result = "已保存，下一条消息立即生效。"
-                resultFailed = false
-            }
-        } catch {
-            result = error.localizedDescription
-            resultFailed = true
-        }
-    }
-
-    private func splitList(_ text: String) -> [String] {
-        text.split(whereSeparator: { $0 == "," || $0 == "，" }).map {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.filter { !$0.isEmpty }
-    }
-
-    private func parseObject(_ text: String) throws -> [String: String] {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty { return [:] }
-        let object = try JSONSerialization.jsonObject(with: Data(text.utf8))
-        guard let dict = object as? [String: String] else { throw WebSearchExecutor.SearchError(message: "JSON 必须是字符串键值对象") }
-        return dict
-    }
-
-    private func jsonText(_ object: [String: String]) -> String {
-        guard !object.isEmpty, let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
-              let text = String(data: data, encoding: .utf8) else { return "" }
-        return text
-    }
-}
-
-private extension String {
-    func trimmedOr(_ fallback: String) -> String {
-        let value = trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? fallback : value
     }
 }

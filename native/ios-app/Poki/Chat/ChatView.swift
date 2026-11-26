@@ -1536,8 +1536,11 @@ struct ComposerInputView: View {
                             mainButton
                         }
                         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        modelButton
-                            .disabled(running)
+                        HStack(spacing: 6) {
+                            modelButton
+                            searchButton
+                        }
+                        .disabled(running)
                     }
                     .simultaneousGesture(swipe)
                     .transition(.blurReplace)
@@ -1816,6 +1819,50 @@ struct ComposerInputView: View {
         .accessibilityLabel(hasModel ? Text("Model") : Text("Add Model"))
         .accessibilityValue(name.map { Text(verbatim: $0) } ?? Text(verbatim: ""))
         .accessibilityIdentifier("\(controlIdentifierPrefix).settings.model")
+        .accessibilityHidden(!visible)
+        .allowsHitTesting(visible && taskSettings == nil)
+        .modifier(ComposerShortcutReveal(progress: visible ? 1 : 0))
+        .animation(expansionAnimation, value: visible)
+        .onReceive(NotificationCenter.default.publisher(for: ModelKeys.changed)) { _ in modelVersion += 1 }
+    }
+
+    /// The search preset the next message uses, as a button beside the model's: it opens the presets and
+    /// switches the one tapped at once, the same way the model button switches the model.
+    private var searchButton: some View {
+        let _ = modelVersion
+        let visible = showsModelShortcut && (isSettingsPreview || shortcutsVisible)
+        let preset = isSettingsPreview ? nil : WebSearchPresets.current
+        let label = Text(verbatim: preset?.title ?? "搜索")
+        return Button {
+            guard !isSettingsPreview else { previewTaps += 1; return }
+            settingsPresented = true
+            resumeEditing = focused
+            taskSettings = .search
+            adding = false
+            focused = false
+        } label: {
+            HStack(spacing: 5) {
+                label
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .frame(height: buttonDiameter)
+            .background(Color(.label).opacity(scheme == .dark ? 0.16 : 0.12), in: .capsule)
+            .frame(height: buttonHitSide)
+            .contentShape(.interaction, Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityLabel(Text("Web Search"))
+        .accessibilityValue(Text(verbatim: WebSearchStore.summary))
+        .accessibilityIdentifier("\(controlIdentifierPrefix).settings.search")
         .accessibilityHidden(!visible)
         .allowsHitTesting(visible && taskSettings == nil)
         .modifier(ComposerShortcutReveal(progress: visible ? 1 : 0))

@@ -58,7 +58,7 @@ struct ModelSettingsView: View {
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("联网搜索")
-                            Text(WebSearchStore.isEnabled ? WebSearchPresets.current.summary : AppLocalization.text(LocalizedStringResource("Off")))
+                            Text(verbatim: WebSearchStore.summary)
                                 .font(.caption)
                                 .foregroundStyle(Color(.secondaryLabel))
                         }

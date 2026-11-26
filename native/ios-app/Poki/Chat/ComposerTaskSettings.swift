@@ -15,10 +15,11 @@ private extension VerticalAlignment {
 struct ComposerTaskSettings: View {
     enum Kind: String, Identifiable {
         case model
+        case search
 
         var id: Self { self }
 
-        var title: LocalizedStringResource { "Model" }
+        var title: String { self == .model ? "模型" : "联网搜索" }
     }
 
     struct ModelSelection: Equatable {
@@ -49,8 +50,13 @@ struct ComposerTaskSettings: View {
     var body: some View {
         NavigationStack {
             List {
-                modelOptions
-                approvalOptions
+                switch kind {
+                case .model:
+                    modelOptions
+                    approvalOptions
+                case .search:
+                    searchOptions
+                }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 ceil(geometry.contentSize.height + geometry.contentInsets.top)
@@ -59,7 +65,7 @@ struct ComposerTaskSettings: View {
             }
             .environment(\.defaultMinListRowHeight, 44)
             .settingsPage()
-            .navigationTitle(AppLocalization.text(kind.title))
+            .navigationTitle(kind.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -120,6 +126,64 @@ struct ComposerTaskSettings: View {
         Text(mode.composerDescription)
             .font(.subheadline)
             .foregroundStyle(.secondary)
+    }
+
+    /// The search presets the composer's globe button picks from: tap one and the next message searches
+    /// with it, exactly as tapping a model switches the model that answers.
+    @ViewBuilder private var searchOptions: some View {
+        let _ = modelVersion
+        let presets = WebSearchPresets.all
+        let selected = WebSearchPresets.selectedID
+
+        Section {
+            Button {
+                WebSearchPresets.choose(nil)
+                dismiss()
+            } label: {
+                searchRow(title: "关闭", detail: "下一条消息不提供 web_search", selected: selected == nil)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("composer.search.off")
+
+            ForEach(presets) { preset in
+                Button {
+                    WebSearchPresets.choose(preset.id)
+                    dismiss()
+                } label: {
+                    searchRow(title: preset.title, detail: preset.detail, selected: selected == preset.id)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("composer.search.\(preset.id)")
+            }
+        } header: {
+            Text("联网搜索配置")
+        } footer: {
+            if presets.isEmpty {
+                Text("还没有预设。在下面的管理页新建一个搜索服务地址。")
+            } else {
+                Text("选中后下一条消息立即使用它，和切换模型一样即时。")
+            }
+        }
+
+        Section {
+            NavigationLink { WebSearchSettingsView() } label: {
+                Label("管理预设", systemImage: "slider.horizontal.3")
+            }
+        }
+    }
+
+    private func searchRow(title: String, detail: String, selected: Bool) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title)
+                Text(verbatim: detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            selectionMark(selected)
+        }
+        .contentShape(.rect)
     }
 
     @ViewBuilder private var modelOptions: some View {
