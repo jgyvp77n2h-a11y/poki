@@ -6,6 +6,7 @@ final class ModelServerStub: URLProtocol {
     struct Sent {
         let url: URL?
         let body: Data
+        let headers: [String: String]
         var json: [String: Any] {
             (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
         }
@@ -14,6 +15,7 @@ final class ModelServerStub: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) static var answer: (status: Int, body: String)?
     nonisolated(unsafe) static var responder: (@Sendable (URLRequest, Data) -> (status: Int, type: String, body: String))?
+    nonisolated(unsafe) static var additionalHosts: Set<String> = []
     nonisolated(unsafe) private static var recorded: [Sent] = []
 
     static var requests: [Sent] { lock.withLock { recorded } }
@@ -22,6 +24,7 @@ final class ModelServerStub: URLProtocol {
         lock.withLock {
             answer = nil
             responder = nil
+            additionalHosts = []
             recorded.removeAll()
         }
     }
@@ -29,6 +32,7 @@ final class ModelServerStub: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host() else { return false }
         return ["model-server.test", "openrouter.ai", "api.anthropic.com", "opencode.ai"].contains(host)
+            || lock.withLock { additionalHosts.contains(host) }
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -36,7 +40,14 @@ final class ModelServerStub: URLProtocol {
     override func startLoading() {
         let body = Self.bodyData(from: request)
         let customResponder = Self.lock.withLock { () -> (@Sendable (URLRequest, Data) -> (status: Int, type: String, body: String))? in
-            Self.recorded.append(Sent(url: request.url, body: body))
+            // Only inspect non-secret routing fields in tests: never retain
+            // Authorization, API keys, cookies or other credential headers.
+            let visible: Set<String> = ["x-opencode-session", "x-opencode-client", "user-agent"]
+            let headers = (request.allHTTPHeaderFields ?? [:]).reduce(into: [String: String]()) { result, field in
+                let name = field.key.lowercased()
+                if visible.contains(name) { result[name] = field.value }
+            }
+            Self.recorded.append(Sent(url: request.url, body: body, headers: headers))
             return Self.responder
         }
         let reply: (status: Int, type: String, body: String)
@@ -227,24 +238,24 @@ final class ConnectionCheckTests: XCTestCase {
     }
 
     func testUncataloguedOpenRouterModelOmitsThinkingParameters() async throws {
-        let modelID = "openai/gpt-6.1-terra"
+        let modelID = "vendor/new-chat"
         UserDefaults.standard.set([modelID], forKey: "models.listed.openrouter")
         ModelCatalog.set(modelID, on: true, for: .openrouter)
         ModelKeys.selectedProvider = .openrouter
         ModelKeys.selectedModel = modelID
         XCTAssertEqual(ModelKeys.model(for: .openrouter), modelID)
 
-        let sse = #"data: {"id":"gen-1","object":"chat.completion.chunk","created":1,"model":"openai/gpt-6.1-terra-20261026","choices":[{"index":0,"delta":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}"# + "\n\ndata: [DONE]\n\n"
+        let sse = #"data: {"id":"gen-1","object":"chat.completion.chunk","created":1,"model":"vendor/new-chat-20261026","choices":[{"index":0,"delta":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}"# + "\n\ndata: [DONE]\n\n"
         ModelServerStub.responder = { _, body in
             let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
             if json["thinking"] != nil || json["reasoning"] != nil || json["reasoning_effort"] != nil || json["output_config"] != nil {
-                return (400, "application/json", #"{"error":{"message":"Thinking.block_binding is not supported on openai/gpt-6.1-terra-20261026","code":400}}"#)
+                return (400, "application/json", #"{"error":{"message":"Thinking.block_binding is not supported on vendor/new-chat-20261026","code":400}}"#)
             }
             return (200, "text/event-stream", sse)
         }
 
         let checkResult = await ConnectionCheck.run(.openrouter, key: key)
-        XCTAssertEqual(checkResult, .works(model: "openai/gpt-6.1-terra-20261026"))
+        XCTAssertEqual(checkResult, .works(model: "vendor/new-chat-20261026"))
         let first = try XCTUnwrap(ModelServerStub.requests.first)
         XCTAssertEqual(first.url?.absoluteString, "https://openrouter.ai/api/v1/chat/completions")
         XCTAssertEqual(first.json["model"] as? String, modelID)
@@ -255,7 +266,7 @@ final class ConnectionCheckTests: XCTestCase {
 
         try ModelKeys.save(key, for: .openrouter)
         let model = try XCTUnwrap(ModelProvider.openrouter.piModel(modelID))
-        let loop = PiLoop(provider: .openrouter, model: model, tools: []) { _ in
+        let loop = PiLoop(provider: .openrouter, model: model, sessionID: UUID().uuidString, tools: []) { _ in
             .init(text: "", jpeg: nil, isError: false)
         }
         let turnOutcome = await loop.run("Reply with OK.", instructions: "Be brief.", maxTurns: 1) { _ in }
@@ -272,7 +283,7 @@ final class ConnectionCheckTests: XCTestCase {
         try ModelKeys.save(key, for: .openrouter)
         let catalogJSON = #"""
         {"data":[
-          {"id":"openai/gpt-6.1-terra","supported_parameters":["max_completion_tokens","reasoning","reasoning_effort","tools"]},
+          {"id":"vendor/reasoning-chat","supported_parameters":["max_completion_tokens","reasoning","reasoning_effort","tools"]},
           {"id":"vendor/plain-chat","supported_parameters":["max_tokens","temperature","tools"]}
         ]}
         """#
@@ -292,7 +303,7 @@ final class ConnectionCheckTests: XCTestCase {
         ModelKeys.selectedProvider = .openrouter
         ModelKeys.selectedModel = "vendor/plain-chat"
         let plainModel = try XCTUnwrap(ModelProvider.openrouter.piModel("vendor/plain-chat"))
-        let plainLoop = PiLoop(provider: .openrouter, model: plainModel, tools: []) { _ in
+        let plainLoop = PiLoop(provider: .openrouter, model: plainModel, sessionID: UUID().uuidString, tools: []) { _ in
             .init(text: "", jpeg: nil, isError: false)
         }
         let plainOutcome = await plainLoop.run("Reply with OK.", instructions: "Be brief.", maxTurns: 1) { _ in }
@@ -302,16 +313,16 @@ final class ConnectionCheckTests: XCTestCase {
         XCTAssertNil(plainSent.json["thinking"])
 
         ModelServerStub.recordedReset()
-        ModelCatalog.set("openai/gpt-6.1-terra", on: true, for: .openrouter)
-        ModelKeys.selectedModel = "openai/gpt-6.1-terra"
+        ModelCatalog.set("vendor/reasoning-chat", on: true, for: .openrouter)
+        ModelKeys.selectedModel = "vendor/reasoning-chat"
         let checkResult = await ConnectionCheck.run(.openrouter, key: key)
         XCTAssertEqual(checkResult, .works(model: "served"))
         let checkSent = try XCTUnwrap(ModelServerStub.requests.first)
         XCTAssertNil(checkSent.json["reasoning"])
         XCTAssertNil(checkSent.json["thinking"])
 
-        let reasoningModel = try XCTUnwrap(ModelProvider.openrouter.piModel("openai/gpt-6.1-terra"))
-        let reasoningLoop = PiLoop(provider: .openrouter, model: reasoningModel, tools: []) { _ in
+        let reasoningModel = try XCTUnwrap(ModelProvider.openrouter.piModel("vendor/reasoning-chat"))
+        let reasoningLoop = PiLoop(provider: .openrouter, model: reasoningModel, sessionID: UUID().uuidString, tools: []) { _ in
             .init(text: "", jpeg: nil, isError: false)
         }
         let reasoningOutcome = await reasoningLoop.run("Reply with OK.", instructions: "Be brief.", maxTurns: 1) { _ in }
@@ -361,7 +372,7 @@ final class ConnectionCheckTests: XCTestCase {
 
         ModelServerStub.recordedReset()
         let solModel = try XCTUnwrap(ModelProvider.openrouter.piModel("openai/gpt-6.1-sol"))
-        let solLoop = PiLoop(provider: .openrouter, model: solModel, tools: []) { _ in
+        let solLoop = PiLoop(provider: .openrouter, model: solModel, sessionID: UUID().uuidString, tools: []) { _ in
             .init(text: "", jpeg: nil, isError: false)
         }
         let solOutcome = await solLoop.run("Reply with OK.", instructions: "Be brief.", maxTurns: 1) { _ in }
@@ -404,7 +415,7 @@ final class ConnectionCheckTests: XCTestCase {
         func chatRequest(_ modelID: String) async throws -> ModelServerStub.Sent {
             ModelServerStub.recordedReset()
             let model = try XCTUnwrap(ModelProvider.anthropic.piModel(modelID))
-            let loop = PiLoop(provider: .anthropic, model: model, tools: []) { _ in
+            let loop = PiLoop(provider: .anthropic, model: model, sessionID: UUID().uuidString, tools: []) { _ in
                 .init(text: "", jpeg: nil, isError: false)
             }
             let outcome = await loop.run("Reply with OK.", instructions: "Be brief.", maxTurns: 1) { _ in }
