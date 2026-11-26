@@ -1,9 +1,11 @@
 name: Sync fork to upstream
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: write
