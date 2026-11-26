@@ -140,6 +140,11 @@ enum Harness {
         description: "Find an app on this iPhone and its bundle id for {launch}. name: the app's name in any language (\"淘宝\", \"Notes\"); answers the installed apps with that name from the phone's own app list, or, when none is installed, the App Store's matches marked not installed with their links. purpose: what an app should do (\"parking\"); answers App Store apps for it, installed ones first, with links for the others. Launch only ids it says are installed. When it says it could not tell, the app may still be there.",
         schema: ["type": "object", "properties": ["name": string, "purpose": string], "additionalProperties": false])
 
+    static let webSearch = ToolSpec(
+        name: "web_search",
+        description: "Search the public web for current facts, sources, or identity information not fixed by the backend facts or exact model-family mapping. Use when the model id is unknown, the answer needs recent public information, or the user asks for web sources. Base the answer only on returned search results and cite the source name or link briefly.",
+        schema: object(["query": string], ["query"]))
+
     static var splitViewTools: [ToolSpec] {
         toolSpecs(inSplitView: true, includeScreenHistory: HistoryCapture.agentQueryAllowed)
     }
@@ -148,7 +153,8 @@ enum Harness {
     /// The current permission determines which ones are declared for each request.
     static func toolSpecs(inSplitView: Bool, includeScreenHistory: Bool) -> [ToolSpec] {
         if !inSplitView {
-            return catalogTools(includeScreenHistory: includeScreenHistory) + [findApp] + WebTools.specs + [reportPlan, finishTask]
+            let searchTools = WebSearchStore.isEnabled ? [webSearch] : []
+            return catalogTools(includeScreenHistory: includeScreenHistory) + [findApp] + WebTools.specs + searchTools + [reportPlan, finishTask]
         }
         return [
             ToolSpec(name: "look", description: "Read the app, numbered UI elements and screenshot of the left or right pane. Select a pane explicitly when you first read and whenever moving between apps. Points use the selected screenshot’s own coordinates.",

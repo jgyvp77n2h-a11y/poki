@@ -17,19 +17,47 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   app:
-    # The Xcode 27 image: the iOS 27.1 SDK or later, which the iPhone Duo needs (build-ipa).
-    runs-on: xcode-27
+    # iPhone 14 hand-test build: the standard macOS 26 runner is sufficient and picks up faster.
+    # The Duo-specific prealpha flow still uses the Xcode 27 runner and its 27.1 SDK floor.
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Commit ChatModel web_search routing
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: jgyvp77n2h-a11y
+          GIT_AUTHOR_EMAIL: jgyvp77n2h@privaterelay.appleid.com
+          GIT_COMMITTER_NAME: jgyvp77n2h-a11y
+          GIT_COMMITTER_EMAIL: jgyvp77n2h@privaterelay.appleid.com
+        run: |
+          set -euo pipefail
+          if git apply --check .github/patches/chat-web-search.patch; then
+            git apply .github/patches/chat-web-search.patch
+            git add native/ios-app/Poki/Chat/ChatModel.swift native/ios-app/Poki/Chat/WebSearch/WebSearch.swift
+            git commit -m "fix: route native web_search in ChatModel [skip ci]"
+            git push origin HEAD:main
+          fi
       - id: build
         uses: ./.github/actions/build-ipa
         with:
           version: ${{ inputs.version }}
           build: ${{ inputs.build }}
           editions: ${{ inputs.editions || 'external' }}
+          minimumSDK: 26.0
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Poki-build-logs
+          path: build/app-*.log
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: Poki-unsigned

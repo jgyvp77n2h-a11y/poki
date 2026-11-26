@@ -55,6 +55,26 @@ struct ModelSettingsView: View {
                 Text("改的是每条消息开头那段系统提示，不是备忘录里的笔记。")
             }
 
+            Section {
+                NavigationLink { WebSearchSettingsView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "globe")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("联网搜索")
+                            Text(WebSearchStore.isEnabled ? "已启用" : "未启用")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("搜索由 iPhone 本机执行；API Key 保存在 Keychain，不进入模型上下文。")
+            }
+
             // With no account yet the card above has Add Account, and an empty group would only be a heading.
             if ModelProvider.allCases.contains(where: ModelAccounts.isSetUp) {
             Section {
