@@ -152,6 +152,15 @@ final class PokiBrowser: NSObject {
         waiters.values.forEach { $0.resume() }
     }
 
+    /// `WKNavigationAction.mainFrameNavigation` is declared by the iOS 27 SDK only, and this fork's
+    /// hand-test build compiles against the iOS 26 SDK (Xcode 26 on `macos-26`): read the same
+    /// association from WebKit at runtime, so the source builds on either SDK and uses it on iOS 27.
+    static func mainFrameNavigation(of action: WKNavigationAction) -> WKNavigation? {
+        let selector = NSSelectorFromString("mainFrameNavigation")
+        guard action.responds(to: selector) else { return nil }
+        return action.perform(selector)?.takeUnretainedValue() as? WKNavigation
+    }
+
     func approveMainFrameNavigation(_ navigation: WKNavigation) {
         guard navigation !== activeNavigation, !supersededNavigations.contains(navigation) else { return }
         if let approvedNavigation, approvedNavigation !== navigation {
@@ -315,7 +324,7 @@ extension PokiBrowser: WKNavigationDelegate, WKUIDelegate {
             return .cancel
         }
         if #available(iOS 27.0, *), navigationAction.targetFrame?.isMainFrame == true,
-           let navigation = navigationAction.mainFrameNavigation {
+           let navigation = Self.mainFrameNavigation(of: navigationAction) {
             approveMainFrameNavigation(navigation)
         }
         #if DEBUG
